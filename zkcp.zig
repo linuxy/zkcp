@@ -1,6 +1,5 @@
 const std = @import("std");
 const log = std.log.scoped(.zkcp);
-const Allocator = std.mem.Allocator;
 
 const assert = std.debug.assert;
 const mem = std.mem;
@@ -177,22 +176,22 @@ pub fn ikcp_release(kcp: ?*ikcpcb) void {
     if(kcp != null) {
         var seg: ?*IKCPSEG = undefined;
         while (!((&kcp.?.snd_buf) == (&kcp.?.snd_buf).*.next)) {
-            seg = iqueue_entry(kcp.?.snd_buf.next, IKCPSEG, snode);
+            seg = iqueue_entry(kcp.?.snd_buf.next);
             iqueue_del(&seg.?.node);
             ikcp_segment_delete(kcp, seg);
         }
         while (!((&kcp.?.rcv_buf) == (&kcp.?.rcv_buf).*.next)) {
-            seg = iqueue_entry(kcp.?.snd_buf.next, IKCPSEG, snode);
+            seg = iqueue_entry(kcp.?.snd_buf.next);
             iqueue_del(&seg.?.node);
             ikcp_segment_delete(kcp, seg);
         }
         while (!((&kcp.?.snd_queue) == (&kcp.?.snd_queue).*.next)) {
-            seg = iqueue_entry(kcp.?.snd_buf.next, IKCPSEG, snode);
+            seg = iqueue_entry(kcp.?.snd_buf.next);
             iqueue_del(&seg.?.node);
             ikcp_segment_delete(kcp, seg);
         }
         while (!((&kcp.?.rcv_queue) == (&kcp.?.rcv_queue).*.next)) {
-            seg = iqueue_entry(kcp.?.snd_buf.next, IKCPSEG, snode);
+            seg = iqueue_entry(kcp.?.snd_buf.next);
             iqueue_del(&seg.?.node);
             ikcp_segment_delete(kcp, seg);
         }
@@ -247,7 +246,7 @@ pub export fn ikcp_recv(kcp: *ikcpcb, arg_buffer: [*c]u8, len: isize) isize {
     p = kcp.*.rcv_queue.next;
     while(p != (&kcp.*.rcv_queue)) {
         var fragment: usize = undefined;
-        seg = iqueue_entry(p, IKCPSEG, snode);//@ptrCast(*IKCPSEG, @alignCast(@import("std").meta.alignment(IKCPSEG), @ptrCast(*u8, @alignCast(@import("std").meta.alignment(u8), @ptrCast(*IKCPSEG, @alignCast(@import("std").meta.alignment(IKCPSEG), p)))) - @intCast(isize, @ptrToInt(&@intToPtr(*IKCPSEG, @as(c_int, 8)).*.node))));
+        seg = iqueue_entry(p);
         p = p.?.next;
 
         if(buffer != null) {
@@ -275,7 +274,7 @@ pub export fn ikcp_recv(kcp: *ikcpcb, arg_buffer: [*c]u8, len: isize) isize {
     assert(length == peeksize);
 
     while(!iqueue_is_empty(&kcp.*.rcv_buf)) {
-        seg = iqueue_entry(kcp.*.rcv_buf.next, IKCPSEG, snode);
+        seg = iqueue_entry(kcp.*.rcv_buf.next);
         if(seg.?.sn == kcp.*.rcv_nxt and kcp.*.nrcv_que < kcp.*.rcv_wnd) {
             iqueue_del(&seg.?.node);
             kcp.*.nrcv_buf -= 1;
@@ -305,7 +304,7 @@ pub fn ikcp_send(kcp: *ikcpcb, buffer: *const u8, len: isize) isize {
     //1. append to previous segment in streaming mode (if possible)
     if (kcp.*.stream != 0) {
         if (!iqueue_is_empty(&kcp.*.snd_queue)) {
-            var old: *IKCPSEG = iqueue_entry(kcp.*.snd_queue.prev, IKCPSEG, snode);
+            var old: *IKCPSEG = iqueue_entry(kcp.*.snd_queue.prev);
             if (old.*.len < kcp.*.mss) {
                 var capacity: isize = kcp.*.mss - old.*.len;
                 var extend: isize = if (len < capacity) len else capacity;
@@ -395,7 +394,7 @@ pub fn ikcp_update_ack(kcp: *ikcpcb, rtt: i32) void {
 pub fn ikcp_shrink_buf(kcp: *ikcpcb) void {
     var p: *IQUEUEHEAD = kcp.*.snd_buf.next;
     if(p != &kcp.*.snd_buf) {
-        var seg: *IKCPSEG = iqueue_entry(p, IKCPSEG, snode);
+        var seg: *IKCPSEG = iqueue_entry(p);
         kcp.*.snd_una = seg.*.sn;
     } else {
         kcp.*.snd_una = kcp.*.snd_nxt;
@@ -431,7 +430,7 @@ pub fn ikcp_parse_una(kcp: *ikcpcb, una: u32) void {
 
     p = kcp.*.snd_buf.next;
     while(p != (&kcp.*.snd_buf)) : (p = next) {
-        var seg: ?*IKCPSEG = null; //@ptrCast([*c]IKCPSEG, @alignCast(@import("std").meta.alignment(IKCPSEG), @ptrCast([*c]u8, @alignCast(@import("std").meta.alignment(u8), @ptrCast([*c]IKCPSEG, @alignCast(@import("std").meta.alignment(IKCPSEG), p)))) - @intCast(usize, @ptrToInt(&@intToPtr([*c]IKCPSEG, @as(c_int, 0)).*.node))));
+        var seg: ?*IKCPSEG = iqueue_entry(p);
         next = p.*.next;
         if(_itimediff(una, seg.*.sn > 0)) {
             iqueue_del(p);
@@ -478,7 +477,7 @@ pub fn ikcp_ack_push(kcp: *ikcpcb, sn: u32, ts: u32) void {
             while (newblock < newsize) : (newblock <<= 1) {}
         }
 
-        acklist = std.heap.c_allocator.alloc(u32, newblock * 2); //malloc
+        acklist = std.heap.c_allocator.alloc(u32, newblock * 2);
 
         if(acklist == null) {
             assert(acklist != null);
@@ -545,7 +544,7 @@ pub fn ikcp_parse_data(kcp: *ikcpcb, newseg: *IKCPSEG) void {
     }
 
     while(!iqueue_is_empty(&kcp.*.rcv_buf)) {
-        var seg: ?*IKCPSEG = iqueue_entry(kcp.*.rcv_buf.next, IKCPSEG, snode);
+        var seg: ?*IKCPSEG = iqueue_entry(kcp.*.rcv_buf.next);
         if(seg.?.sn == kcp.*.rcv_nxt and kcp.*.nrcv_que < kcp.*.rcv_wnd) {
             iqueue_del(&seg.*.node);
             kcp.*.nrcv_buf -= 1;
@@ -570,7 +569,7 @@ pub fn ikcp_peeksize(kcp: ?*const ikcpcb) isize {
     if(iqueue_is_empty(&kcp.?.rcv_queue))
         return -1;
 
-    seg = iqueue_entry(kcp.?.rcv_queue.next, IKCPSEG, snode);
+    seg = iqueue_entry(kcp.?.rcv_queue.next);
     if(seg.?.frg == 0) return @as(isize, seg.?.len);
 
     if(kcp.?.nrcv_que < seg.?.frg + 1)
@@ -578,22 +577,13 @@ pub fn ikcp_peeksize(kcp: ?*const ikcpcb) isize {
 
     p = kcp.?.rcv_queue.next;
     while (p != &kcp.?.rcv_queue) : (p = p.?.next) {
-        seg = iqueue_entry(p, IKCPSEG, snode);
+        seg = iqueue_entry(p);
         length += seg.?.len;
         if (seg.?.frg == 0) break;
     }
 
     return length;
 }
-
-pub fn main() !void {
-    var user: u8 = 'm';
-    const kcp = ikcp_create(5, &user);
-    _ = ikcp_release(kcp);
-
-    log.info("hello {}", .{kcp.?.rdc_check_ts});
-}
-
 
 //---------------------------------------------------------------------
 // ikcp_encode_seg
@@ -698,7 +688,7 @@ pub fn ikcp_flush(kcp: *ikcpcb) void {
         if(iqueue_is_empty(&kcp.*.snd_queue))
             break;
 
-        newseg = iqueue_entry(kcp.*.snd_queue.next, IKCPSEG, snode);
+        newseg = iqueue_entry(kcp.*.snd_queue.next);
 
         iqueue_del(&newseg.*.node);
         iqueue_add_tail(&newseg.*.node, &kcp.*.snd_buf);
@@ -722,7 +712,7 @@ pub fn ikcp_flush(kcp: *ikcpcb) void {
 
     p = kcp.*.snd_buf.next;
     while (p != (&kcp.*.snd_buf)) : (p = p.*.next) {
-        var segment: *IKCPSEG = iqueue_entry(p, IKCPSEG, snode); //[*c]IKCPSEG = @ptrCast([*c]IKCPSEG, @alignCast(@import("std").meta.alignment(IKCPSEG), @ptrCast([*c]u8, @alignCast(@import("std").meta.alignment(u8), @ptrCast([*c]IKCPSEG, @alignCast(@import("std").meta.alignment(IKCPSEG), p)))) - @intCast(usize, @ptrToInt(&@intToPtr([*c]IKCPSEG, @as(c_int, 0)).*.node))));
+        var segment: *IKCPSEG = iqueue_entry(p);
         var needsend: bool = false;
         if (segment.*.xmit == 0) {
             needsend = 1;
@@ -884,7 +874,7 @@ pub fn ikcp_check(kcp: *const ikcpcb, current: u32) u32 {
 
     p = kcp.*.snd_buf.next;
     while(p != &kcp.*.snd_buf) : (p = p.*.next) {
-        const seg: *IKCPSEG = iqueue_entry(p, IKCPSEG, snode);
+        const seg: *IKCPSEG = iqueue_entry(p);
         var diff: i32 = _itimediff(seg.*.resendts, current);
         if(diff <= 0) {
             return current;
@@ -1126,10 +1116,7 @@ pub fn iqueue_is_empty(ptr: *const IQUEUEHEAD) bool {
     return ptr == ptr.*.next;
 }
 
-pub fn iqueue_entry(ptr: ?*IQUEUEHEAD, @"type": anytype, member: *const [4:0]u8) ?*IKCPSEG {
-    _ = member;
-    _ = @"type";
-    _ = ptr;
+pub fn iqueue_entry(ptr: ?*IQUEUEHEAD) ?*IKCPSEG {
     var seg: ?*IKCPSEG = @ptrCast(*IKCPSEG, @alignCast(std.meta.alignment(IKCPSEG), @ptrCast([*c]u8, @alignCast(std.meta.alignment(u8),
     @ptrCast(*IKCPSEG, @alignCast(std.meta.alignment(IKCPSEG), ptr)))) - @intCast(usize, @ptrToInt(&@intToPtr(*IKCPSEG, @as(c_int, 8)).*.node))));
     return seg;
