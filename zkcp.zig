@@ -137,9 +137,8 @@ pub fn ikcp_output(kcp: ?*ikcpcb, data: ?*const c_void, size: usize) usize {
         log.info("[RO] {} bytes.", .{size});
     }
     if(size == 0) return 0;
-    _ = data;
-    return 0;
-    //return kcp.?.output(data, size, kcp, kcp.?.user);
+
+    return kcp.?.output(data, size, kcp, kcp.?.user);
 }
 //---------------------------------------------------------------------
 // set output callback, which will be invoked by kcp
@@ -164,8 +163,7 @@ pub fn ikcp_create(conv: u32, user: ?*c_void) ?*ikcpcb {
     iqueue_init(&kcp.?.rcv_buf);
     kcp.?.conv = conv;
     kcp.?.user = user;
-    //more
-    
+
     return kcp;
 }
 //---------------------------------------------------------------------
@@ -218,6 +216,9 @@ pub var ikcp_free_hook: ?fn (?*c_void) void = null;
 pub extern fn free(__ptr: ?*c_void) void;
 pub extern fn memcpy(__dest: ?*c_void, __src: ?*const c_void, __n: c_ulong) ?*c_void;
 
+//---------------------------------------------------------------------
+// user/upper level recv: returns size, returns below zero for EAGAIN
+//---------------------------------------------------------------------
 pub export fn ikcp_recv(kcp: *ikcpcb, arg_buffer: [*c]u8, len: isize) isize {
     var p: ?*IQUEUEHEAD = undefined;
     var ispeek: usize = if(len < 0) 1 else 0;
@@ -293,6 +294,9 @@ pub export fn ikcp_recv(kcp: *ikcpcb, arg_buffer: [*c]u8, len: isize) isize {
     return length;
 }
 
+//---------------------------------------------------------------------
+// user/upper level send, returns below zero for error
+//---------------------------------------------------------------------
 pub fn ikcp_send(kcp: *ikcpcb, buffer: *const u8, len: isize) isize {
     var seg: ?*IKCPSEG = undefined;
     var count: usize = undefined;
